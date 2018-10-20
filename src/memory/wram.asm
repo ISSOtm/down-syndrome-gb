@@ -67,10 +67,15 @@ PURGE SCREEN_ID
 ; Player object (always on-screen)
     dstruct Object, wPlayer
 
+wPlayerDirection::
+    db
 ; Player screen position
 wPlayerDepth::
     db
 wPlayerXScreen::
+    db
+
+wDigDelay::
     db
 
 

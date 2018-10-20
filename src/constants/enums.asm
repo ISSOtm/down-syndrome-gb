@@ -78,7 +78,11 @@ ENDM
 ; Block types
     enum_start
     enum_elem BLOCK_DUG_DIRT
+    enum_elem BLOCK_GRASS
+    enum_elem BLOCK_GRASS_HIT
     enum_elem BLOCK_DIRT
+    enum_elem BLOCK_DIRT_HIT1
+    enum_elem BLOCK_DIRT_HIT2
     enum_elem BLOCK_ROCK
     enum_elem BLOCK_ROCK_CRACKLED
     enum_elem BLOCK_ROCK_DAMAGED
@@ -94,7 +98,11 @@ ENDM
     enum_elem STATE_PLAYER_FALLING
     enum_elem STATE_PLAYER_SQUISH
 
-    enum_elem STATE_ROCK_SHAKING
-    enum_elem STATE_ROCK_FALLING
+    enum_elem STATE_ROCK1_SHAKING
+    enum_elem STATE_ROCK2_SHAKING
+    enum_elem STATE_ROCK3_SHAKING
+    enum_elem STATE_ROCK1_FALLING
+    enum_elem STATE_ROCK2_FALLING
+    enum_elem STATE_ROCK3_FALLING
 
     enum_elem STATE_DEBRIS_SHATTERING
