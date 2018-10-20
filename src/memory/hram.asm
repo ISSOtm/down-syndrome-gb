@@ -6,18 +6,30 @@ hOAMDMA::
     ds 8 ; OAMDMAEnd - OAMDMA
 
 
-; Currently-loaded ROM bank, useful to save back (eg. during ints)
-hCurROMBank::
-    db
-
-
 ; Used by the PB16 decompressor
 pb16_byte0::
     db
 
 
+; Temporary variables for object drawing
+hObjectY::
+    db
+hObjectX::
+    db
+hObjectTile::
+    db
+hObjectAttr::
+    db
+
+
 ; Place variables that need to be zero-cleared on init (and soft-reset) below
 hClearStart::
+
+
+hRandIntLow::
+    db
+hRandIntHigh::
+    db
 
 
 ; Used to let VBlank know it need to ACK

@@ -227,12 +227,6 @@ PrintedErrorCode:
     jr .printMemReg
 .doneWithMemRegs
 
-    ldcoord hl, 15, 1, _SCRN0
-    ld de, BankStr
-    call StrcpyNoTerm
-    ldh a, [hCurROMBank]
-    call PrintHex
-
     ldcoord hl, 16, 1, _SCRN0
     ld de, BuildDate
     call Strcpy
@@ -597,9 +591,6 @@ MemRegs:
     dstr "IE:"
     dw rIE
     db 0
-
-BankStr:
-    dstr "Bank:"
 
 ErrorFont:
 REPT " " - 1

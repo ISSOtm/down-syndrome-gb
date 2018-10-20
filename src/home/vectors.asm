@@ -46,13 +46,7 @@ rst18:
     ret
 
 SECTION "rst20", ROM0[$0020]
-; Please call using `rst bankswitch`
-; Properly switches to a ROM bank
-; @param a The ROM bank to switch to
-; NOTE: only switches the lower 8 bytes, the upper bit (for 512 banks) is not considered
-ROMbankswitch:
-    ldh [hCurROMBank], a
-    ld [rROMB0], a
+; Empty
     ret
 
 SECTION "rst28", ROM0[$0028]
@@ -201,6 +195,9 @@ VBlankHandler:
     transfer_reg SCX
     transfer_reg WY
     transfer_reg WX
+    transfer_reg BGP
+    transfer_reg OBP0
+    transfer_reg OBP1
 
 
     ldh a, [hWhichScanlineBuffer]

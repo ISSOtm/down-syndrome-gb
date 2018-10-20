@@ -66,3 +66,35 @@ ENDM
     enum_elem DIR_LEFT
     enum_elem DIR_RIGHT
 
+
+; Game states
+    enum_start
+    enum_elem GAME_STATE_NORMAL
+    enum_elem GAME_STATE_DOWN_TRANSITION
+    enum_elem GAME_STATE_LEFT_TRANSITION
+    enum_elem GAME_STATE_RIGHT_TRANSITION
+
+
+; Block types
+    enum_start
+    enum_elem BLOCK_DUG_DIRT
+    enum_elem BLOCK_DIRT
+    enum_elem BLOCK_ROCK
+    enum_elem BLOCK_ROCK_CRACKLED
+    enum_elem BLOCK_ROCK_DAMAGED
+    ; enum_elem BLOCK_HEAVY_ROCK
+    enum_elem BLOCK_UNBREAKABLE
+
+
+; Object states
+    enum_start
+    enum_elem STATE_PLAYER_STILL
+    enum_elem STATE_PLAYER_LEFT
+    enum_elem STATE_PLAYER_RIGHT
+    enum_elem STATE_PLAYER_FALLING
+    enum_elem STATE_PLAYER_SQUISH
+
+    enum_elem STATE_ROCK_SHAKING
+    enum_elem STATE_ROCK_FALLING
+
+    enum_elem STATE_DEBRIS_SHATTERING

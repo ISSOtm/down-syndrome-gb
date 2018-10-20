@@ -189,4 +189,54 @@ Mapcpy::
     ret
 
 
+; Generates a random number
+; Shamelessly stolen from SM64
+; It's a very neat bijection, and I'm not good enough to produce such a nice function
+; I didn't implement the weird re-looping they did, though
+; @returns hl The number generated
+; @returns a  The high byte of that number
+; @destroy bc
+RandInt::
+ f RandInt
+	ldh a, [hRandIntLow]
+	ld c, a
+	cp $0A
+	ldh a, [hRandIntHigh]
+	jr nz, .dontChangeCycles
+	cp $56
+	jr nz, .dontChangeCycles
+	xor a
+	ld c, a
+.dontChangeCycles
+	xor c
+	ld h, a
+	ld l, c
+	ld b, l
+	ld c, h
+	add hl, hl
+	ld a, l
+	xor c
+	ld l, a
+	ld a, h
+	and $01 ; Remove pre-shift upper byte
+	xor b ; Resets carry
+	rra
+	cpl
+	ld h, a
+	ld a, l
+	rra
+	ld bc, $1F74
+	jr nc, .useThatConstant
+	ld bc, $8100
+.useThatConstant
+	xor c
+	ld l, a
+	ldh [hRandIntLow], a
+	ld a, h
+	xor b
+	ld h, a
+	ldh [hRandIntHigh], a
+	ret
+
+
 PURGE f
