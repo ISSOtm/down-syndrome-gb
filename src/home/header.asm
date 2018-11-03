@@ -77,12 +77,12 @@ Reset::
     dec b
     jr nz, .copyOAMDMA
 
+    ld a, STATF_LYC
+    ldh [rSTAT], a
     ld a, LOW(hScanlineFXBuffer1)
     ldh [hWhichScanlineBuffer], a
     ld a, $FF
     ldh [hScanlineFXBuffer1], a
-    ld a, STATF_LYC
-    ldh [rSTAT], a
 
     ld a, LCDCF_ON | LCDCF_BGON
     ldh [hLCDC], a

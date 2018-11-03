@@ -592,7 +592,7 @@ MemRegs:
     dw rIE
     db 0
 
-ErrorFont:
+ErrorFont::
 REPT " " - 1
     dw $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000
 ENDR

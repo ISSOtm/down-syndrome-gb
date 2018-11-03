@@ -39,7 +39,7 @@ SECTION "Overworld memory", WRAM0,ALIGN[8]
 SCREEN_ID = 0
 REPT NB_SCREENS_PER_ROW
 OBJ_ID = 0
-    REPT 16
+    REPT 32
 OBJ_NAME equs STRCAT(STRSUB("{SCREEN_ID}", 2, STRLEN("{SCREEN_ID}") + 1), STRCAT("Object", STRSUB("{OBJ_ID}", 2, STRLEN("{OBJ_ID}") + 1)))
         dstruct Object, wScreen{OBJ_NAME}
         PURGE OBJ_NAME
@@ -74,8 +74,13 @@ wPlayerDepth::
     db
 wPlayerXScreen::
     db
+wHavensEncountered::
+    db
 
 wDigDelay::
+    db
+
+wEnergy::
     db
 
 
@@ -111,6 +116,10 @@ wTransitionCounter::
     db
 
 wGameState::
+    db
+
+
+wAnimationFrameCounter::
     db
 
 

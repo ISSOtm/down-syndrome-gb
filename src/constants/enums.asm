@@ -98,6 +98,7 @@ ENDM
     enum_elem STATE_PLAYER_FALLING
     enum_elem STATE_PLAYER_SQUISH
 
+    enum_elem STATE_ROCK_WATCHING
     enum_elem STATE_ROCK1_SHAKING
     enum_elem STATE_ROCK2_SHAKING
     enum_elem STATE_ROCK3_SHAKING
@@ -105,4 +106,12 @@ ENDM
     enum_elem STATE_ROCK2_FALLING
     enum_elem STATE_ROCK3_FALLING
 
+    enum_elem STATE_ROCK_DEBRIS_SHATTERING
     enum_elem STATE_DEBRIS_SHATTERING
+
+    enum_elem STATE_CARROT
+    enum_elem STATE_GOLDEN_POTATO
+
+    enum_elem STATE_DIAMOND
+    enum_elem STATE_EMERALD
+    enum_elem STATE_CRYSTAL

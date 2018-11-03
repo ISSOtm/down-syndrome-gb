@@ -12,14 +12,21 @@ Overworld::
     ld [wGameState], a
     ld [wPlayerDirection], a
     ld [wDigDelay], a
+    ld [wAnimationFrameCounter], a
+    ld [wHavensEncountered], a
     rst wait_vblank
 
 
     ld a, HIGH(_SCRN1)
     ld [wWhichTilemap], a
 
+    ld hl, $8800
+    ld bc, $800
+    xor a
+    rst memset
+
     ld de, OverworldGfx
-    ld hl, $9000
+    ; ld hl, $9000
     ld b, 9 * 4
     call pb16_unpack_block
 
@@ -34,13 +41,30 @@ Overworld::
 
     ld de, OverworldSpriteGfx
     ; hl = ...
-    ld b, 15 * 4
+    ld b, 18 * 4
     call pb16_unpack_block
 
     ld hl, wShadowOAM
     xor a
-    ld c, $A0 - (6 / 2) * 4
+    ld c, $A0 - (6 / 2) * 2 * 4
     rst memset_small
+    lb de, 16, SCRN_X
+    lb bc, $46, 6 / 2
+.writeEnergySprites
+    ld a, d
+    ld [hli], a ; Y pos
+    add a, 16
+    ld d, a
+    ld a, e
+    ld [hli], a ; X pos
+    ld a, b
+    ld [hli], a ; Tile
+    inc b
+    inc b
+    xor a
+    ld [hli], a ; Attr
+    dec c
+    jr nz, .writeEnergySprites
     lb de, 16, 8
     lb bc, 0, 6 / 2
 .writeScoreSprites
@@ -120,6 +144,16 @@ GameStateProcessorTable:
     dw .rightTransition
 
 .normalState
+    ld a, [wDigDelay]
+    and a
+    jr z, .dontDecrementDigDelay
+    dec a
+    ld [wDigDelay], a
+.dontDecrementDigDelay
+
+    ld hl, wAnimationFrameCounter
+    inc [hl]
+
     ; Draw player
     ld hl, wPlayer
     ld de, wShadowOAM
@@ -129,23 +163,36 @@ GameStateProcessorTable:
     ld [wTransitionCounter], a
 
     ; Draw screen objects
-    ld l, a
+    ld l, a ; ld l, 0
     ld a, [wPlayerXScreen]
-    rra
-    rr l
     add a, HIGH(wScreen0Object0)
     ld h, a
-    ld c, 16
+    ld c, NB_OBJECTS_PER_SCREEN
 .drawObject
     push bc
+    push hl
     call ProcessAndDrawObject
+    pop hl
     pop bc
+    ld a, l
+    and -sizeof_Object
+    add a, sizeof_Object
+    ld l, a
     ; Avoid overflowing OAM
     ld a, e
-    cp $A0 - 4 * 4 ; Score only uses 3 objects, but no object uses only 1 sprite.
+    cp $A0 - 7 * 4 ; Score only uses 3 objects, but no object uses only 1 sprite.
     ret nc
     dec c
     jr nz, .drawObject
+
+.clearObjects
+    xor a
+    ld [de], a
+    ld a, e
+    add a, 4
+    ld e, a
+    cp $A0 - 6 * 4
+    jr nz, .clearObjects
     ret
 
 
@@ -155,19 +202,26 @@ GameStateProcessorTable:
     jr nz, .notFirstFrame
     ; xor a
     ld [wPlayer_YPos], a
-    ld hl, wPlayerDepth
-    inc [hl]
     ld hl, wGeneratedScreens
     ld c, NB_SCREENS_PER_ROW
     ; xor a
     rst memset_small
     inc a ; ld a, 1
     ld [wTransitionCounter], a
+    ld hl, wPlayerDepth
+    ld a, [hl]
+    inc a
+    cp 251
+    jr nz, .noWrap
+    sub 25
+.noWrap
+    ld [hl], a
     call DrawScreen
     ld a, SCRN_Y
     ldh [hWY], a
     ld a, 7
     ldh [hWX], a
+    ; TODO: generate sprites for next screen
     ld a, [wWhichTilemap]
     sub $98
     jr z, .using98Map
@@ -197,7 +251,7 @@ GameStateProcessorTable:
     ld a, e
     add a, 4
     ld e, a
-    cp $A0 - 3 * 4
+    cp $A0 - 6 * 4
     jr nz, .moveSprites
     ld a, d ; ld a, HIGH(wShadowOAM)
     ldh [hOAMBufferHigh], a
@@ -220,6 +274,7 @@ GameStateProcessorTable:
 
 .leftTransition
 .rightTransition
+    ; TODO:
     ret
 
 
@@ -238,15 +293,12 @@ DrawScreen::
     ; Generate the screen
 
     ; Clear the screen's objects
-    ld h, l
-    ld l, a ; ld l, 0
-    rr h
-    rr l
-    ld a, HIGH(wScreen0Object0)
-    add a, h
+    ld a, l
+    add a, HIGH(wScreen0Object0)
     ld h, a
     xor a
-    ld c, 16 * sizeof_Object
+    ld l, a;  ld l, 0
+    ld c, 0 ; ld c, NB_OBJECTS_PER_SCREEN * sizeof_Object
     rst memset_small
 
     ; Fill the table with dirt
@@ -281,7 +333,7 @@ DrawScreen::
     xor a
     ld c, (SCRN_X_B / 2 - 1) * (SCRN_X_B / 4)
     rst memset_small
-    jr .screenGenerated
+    jp .screenGenerated
 .notFirstLayer
 
     ld a, BLOCK_UNBREAKABLE
@@ -310,39 +362,166 @@ DrawScreen::
     jr nz, .createHole
 .noHoles
 
-    ; Generate some rocks (always! But a different amount depending on depth)
-    call RandInt
-    ; Add a min, add a max
-
     ; Maybe generate some food?
     call RandInt
-    and $03
+    and 1
     jr z, .noFood
-    ld e, a
-.createFood
     call RandInt
-    cp (SCRN_X_B / 2 - 1) * (SCRN_Y_B / 2)
-    jr nc, .skipFood ; Prevent overflows, but also fails ~1/5 of the time
-    ;
-.skipFood
-    dec e
-    jr nz, .createFood
+    cp SCRN_Y - $10
+    jr nc, .noFood
+    ld b, h
+    ld c, l
+    call GetEmptyObject
+    jr nz, .noFood
+    ld a, 1
+    ld [hli], a ; Exists
+    ld a, b
+    and $30
+    ld a, 0
+    jr nz, .noRareFood
+    bit 7, c
+    jr nz, .noRareFood
+    ld a, STATE_GOLDEN_POTATO - STATE_CARROT
+.noRareFood
+    ld d, a
+    add a, STATE_CARROT
+    ld [hli], a ; State
+    inc l ; inc hl
+    ld a, b
+    and $F0
+    ld [hli], a ; Y pos
+    ld a, c
+    and $70
+    add a, $08
+    ld [hli], a ; X pos
+    ld a, d
+    inc a
+    ld [hli], a ; Frame
+    ld a, LOW(FoodDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(FoodDrawLists)
 .noFood
 
     ; Perhaps generate some goodies? OwO
     call RandInt
-    and $03
+    and 1
     jr z, .noGoodies
-    ld e, a
-.createGoodies
     call RandInt
-    cp (SCRN_X_B / 2 - 1) * (SCRN_Y_B / 2)
-    jr nc, .skipGoody
-    ;
-.skipGoody
-    dec e
-    jr nz, .createGoodies
+    cp SCRN_Y - $10
+    jr nc, .noGoodies
+    ld d, h
+    ld e, l
+    call RandInt
+    call GetEmptyObject
+    jr nz, .noGoodies
+    ld a, 1
+    ld [hli], a ; Exists
+    ldh a, [hRandIntHigh]
+    and $07
+    ld a, 1
+    jr nz, .gotRarity
+    ldh a, [hRandIntLow]
+    and $07
+    ld a, 2
+    jr nz, .gotRarity
+    xor a
+.gotRarity
+    ld d, a
+    add a, STATE_DIAMOND
+    ld [hli], a ; State
+    inc l ; inc hl
+    ld a, d
+    and $F0
+    ld [hli], a ; Y pos
+    ld a, e
+    and $70
+    add a, $08
+    ld [hli], a ; X pos
+    ld a, d
+    inc a
+    add a, a
+    ld [hli], a ; Frame
+    ld a, LOW(GoodiesDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(GoodiesDrawLists)
 .noGoodies
+
+    ld a, [wPlayerDepth]
+.checkHaven
+    sub 25
+    jr c, .notHaven
+    jr nz, .checkHaven
+    ld a, [wHavensEncountered]
+    cp 10
+    jr z, .dontIncHavens
+    inc a
+    ld [wHavensEncountered], a
+.dontIncHavens
+    ld hl, wWhichScreenMap
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    ld c, 9
+    xor a
+    rst memset_small
+    ld [wOOBTile], a
+    jr .screenGenerated
+.notHaven
+    ld a, BLOCK_UNBREAKABLE
+    ld [wOOBTile], a
+
+    ; Generate some rocks (always! But a different amount depending on depth)
+    call RandInt
+    and $7F
+    ld h, a
+    ld a, [wHavensEncountered]
+    add a, LOW(RockCountsTable)
+    ld e, a
+    adc a, HIGH(RockCountsTable)
+    sub e
+    ld d, a
+    ld a, [de] ; Base rolls
+    add a, h
+    ld e, a
+.generateRock
+    call RandInt
+    cp SCRN_Y
+    jr nc, .done
+    and $F0
+    ld [wCoordX], a
+    ld a, l
+    and $70
+    ld [wCoordY], a
+    call GetTerrainAt
+    and a
+    jr z, .ok
+    dec a
+    jr nz, .generateRock
+.ok
+    ld d, h
+    ld e, l
+    call GetEmptyObject
+    jr nz, .noMoreRocks
+    ld a, BLOCK_ROCK
+    ld [de], a
+    ld a, 1
+    ld [hli], a
+    ld a, STATE_ROCK_WATCHING
+    ld [hli], a
+    inc l ; inc hl
+    ld a, [wCoordY]
+    ld [hli], a
+    ld a, [wCoordX]
+    ld [hli], a
+    xor a
+    ld [hli], a
+    ld a, LOW(FallingRockDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(FallingRockDrawLists)
+.done
+    dec e
+    jr nz, .generateRock
+.noMoreRocks
     
     ; Empty tile where player stands, so things make sense
     ld a, [wPlayer_YPos]
@@ -377,7 +556,7 @@ DrawScreen::
     ld h, a
     xor a
     ld l, a
-    lb bc, $1C, SCRN_Y_B
+    lb bc, $20, SCRN_Y_B
     ld de, SCRN_VX_B - SCRN_X_B
 .drawBorder
     wait_vram
@@ -455,9 +634,25 @@ DrawScreen::
     ret
 
 
+; Looks for an empty object slot in the current screen
+; @return Z Set if an object was found
+; @return hl Points to the free object slot if one was found
 GetEmptyObject:
     ld a, [wPlayerXScreen]
-    ; TODO:
+    add a, HIGH(wScreen0Object0)
+    ld h, a
+    xor a
+    ld l, a
+.searchSprite
+    ld a, [hl]
+    and a
+    ret z
+    ld a, l
+    add a, sizeof_Object
+    ld l, a
+    jr nz, .searchSprite
+    inc a
+    ret
 
 
 ; Draws the object at `hl`
@@ -503,6 +698,7 @@ ProcessAndDrawObject:
     add a, b
     ld c, a
     adc a, [hl]
+    push hl
     sub c
     ld h, a
     ld l, c
@@ -511,6 +707,8 @@ ProcessAndDrawObject:
     ld l, a
     ; First, read len
     ld a, [hli]
+    and a
+    jr z, .noDrawing ; Don't draw if hidden
     ld c, a
     xor a
     ldh [hObjectTile], a
@@ -546,6 +744,8 @@ ProcessAndDrawObject:
     inc e ; inc de
     dec c
     jr nz, .drawSprite
+.noDrawing
+    pop hl
     ret
 
 
@@ -624,10 +824,13 @@ GetTerrainAt:
 
 
 DamageRock:
+    call GetPointerToCoords
+    ld a, [hl]
+    inc a
+    call ChangeBlock
     ld a, 16
     ld [wDigDelay], a
-    call GetPointerToCoords
-    dec [hl]
+    and a
     ret
 
 DigBlock:
@@ -644,6 +847,25 @@ DigBlock:
     ld b, 0
     ld de, 10
     call AddToScore
+
+    call GetEmptyObject
+    jr nz, .dontSpawnDebris
+    inc a ; ld a, 1
+    ld [hli], a
+    ld a, STATE_DEBRIS_SHATTERING
+    ld [hli], a
+    ld a, 8
+    ld [hli], a
+    ld a, [wCoordY]
+    ld [hli], a
+    ld a, [wCoordX]
+    ld [hli], a
+    xor a
+    ld [hli], a
+    ld a, LOW(DebrisDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(DebrisDrawLists)
+.dontSpawnDebris
 
     xor a
 ChangeBlock::
@@ -701,6 +923,8 @@ ChangeBlock::
     res 5, l
     dec a
     ld [hli], a
+
+    xor a
     ret
 
 
@@ -797,102 +1021,20 @@ SCREEN_NAME equs STRCAT("wScreen", STRCAT(STRSUB("{SCREEN_ID}", 2, STRLEN("{SCRE
 SCREEN_ID = SCREEN_ID + 1
 ENDR
 PURGE SCREEN_ID
-    
 
 
+RockCountsTable:
+    db 10
+    db 17
+    db 22
+    db 28
+    db 35
+    db 40
+    db 48
+    db 53
+    db 59
+    db 63
 
-SECTION "Digit tiles", ROM0,ALIGN[8]
-
-DigitTiles:
-    dw `00111100
-    dw `01133110
-    dw `01311310
-    dw `01311310
-    dw `01311310
-    dw `01311310
-    dw `01133110
-    dw `00111100
-
-    dw `00011100
-    dw `00113100
-    dw `00133100
-    dw `00113100
-    dw `00013100
-    dw `00013100
-    dw `00013100
-    dw `00011100
-
-    dw `00111100
-    dw `01133110
-    dw `01311310
-    dw `01111310
-    dw `00113110
-    dw `01131110
-    dw `01333310
-    dw `01111110
-
-    dw `01111110
-    dw `01333310
-    dw `01111310
-    dw `00133110
-    dw `01111310
-    dw `01311310
-    dw `01133110
-    dw `00111100
-
-    dw `00011100
-    dw `00113100
-    dw `01133100
-    dw `11313110
-    dw `13333310
-    dw `11113110
-    dw `00013100
-    dw `00011100
-
-    dw `00111110
-    dw `01133310
-    dw `01311110
-    dw `01333110
-    dw `01111310
-    dw `01311310
-    dw `01133110
-    dw `00111100
-
-    dw `00111100
-    dw `01133100
-    dw `01311100
-    dw `01333110
-    dw `01311310
-    dw `01311310
-    dw `01133110
-    dw `00111100
-
-    dw `01111110
-    dw `01333310
-    dw `01111310
-    dw `00013110
-    dw `00013100
-    dw `00013100
-    dw `00013100
-    dw `00011100
-
-    dw `00111100
-    dw `01133110
-    dw `01311310
-    dw `01133110
-    dw `01311310
-    dw `01311310
-    dw `01133110
-    dw `00111100
-
-    dw `00111100
-    dw `01133110
-    dw `01311310
-    dw `01311310
-    dw `01133310
-    dw `00111310
-    dw `00133110
-    dw `00111100
 
 
 SECTION "Initial structs", ROM0
@@ -908,6 +1050,9 @@ PlayerObject:
 
 
 SECTION "Draw lists", ROM0
+
+InvisibleDrawList:
+    db 0
 
 PlayerDrawLists:
     dw .leftDrawList
@@ -985,6 +1130,7 @@ PlayerDrawLists:
 
 
 FallingRockDrawLists:
+    dw InvisibleDrawList
     dw .shakingLeft
     dw .shakingMiddle
     dw .shakingRight
@@ -994,7 +1140,7 @@ FallingRockDrawLists:
     db 2
     
     db 16, -1
-    db 10
+    db $42
     db OAMF_PAL0
     
     db 0, 8
@@ -1005,7 +1151,7 @@ FallingRockDrawLists:
     db 2
     
     db 16, 0
-    db 10
+    db $42
     db OAMF_PAL0
     
     db 0, 8
@@ -1016,7 +1162,7 @@ FallingRockDrawLists:
     db 2
     
     db 16, 1
-    db 10
+    db $42
     db OAMF_PAL0
     
     db 0, 8
@@ -1035,6 +1181,150 @@ FallingRockDrawLists:
     db 0
 
 
+FoodDrawLists:
+    dw InvisibleDrawList
+    dw .carrot
+    dw .potato1
+    dw .potato2
+
+.carrot
+    db 2
+
+    db 16, 8
+    db $1E
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.potato1
+    db 2
+
+    db 16, 8
+    db $2A
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.potato2
+    db 2
+    
+    db 16, 8
+    db $2E
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+
+GoodiesDrawLists:
+    dw InvisibleDrawList
+    dw 0
+    dw .diamond1
+    dw .diamond2
+    dw .emerald1
+    dw .emerald2
+    dw .crystal1
+    dw .crystal2
+
+.emerald1
+    db 2
+
+    db 16, 8
+    db $32
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.emerald2
+    db 2
+
+    db 16, 8
+    db $36
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.diamond1
+    db 2
+
+    db 16, 8
+    db $22
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.diamond2
+    db 2
+
+    db 16, 8
+    db $26
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.crystal1
+    db 2
+
+    db 16, 8
+    db $3A
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.crystal2
+    db 2
+
+    db 16, 8
+    db $3E
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+
+DebrisDrawLists:
+    dw .debris
+    dw .rockDebris
+
+.debris
+    db 2
+
+    db 16, 0
+    db $1A
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+.rockDebris
+    db 2
+
+    db 16, 0
+    db $16
+    db 0
+
+    db 0, 8
+    db 2
+    db 0
+
+
 SECTION "State processing", ROM0
 
 ; A state function should set the Z flag on exit to signify it wants to change the state
@@ -1046,10 +1336,23 @@ StateProcessorTable:
     dw .playerFalling
     dw .playerSquish
 
+    dw .rockWatching
+    dw .rockShaking
+    dw .rockShaking
     dw .rockShaking
     dw .rockFalling
+    dw .rockFalling
+    dw .rockFalling
 
+    dw .rockDebrisShattering
     dw .debrisShattering
+
+    dw .carrot
+    dw .potato
+
+    dw .diamond
+    dw .emerald
+    dw .crystal
 
 
 .playerStill
@@ -1118,16 +1421,19 @@ StateProcessorTable:
 
 .digLeft
     call DigBlock
+    ret nz
     lb bc, STATE_PLAYER_LEFT, 8
     ret
 
 .digRight
     call DigBlock
+    ret nz
     lb bc, STATE_PLAYER_RIGHT, 8
     ret
 
 .digDown
     call DigBlock
+    ret nz
     ; Fallthrough
 
 .beginPlayerFall
@@ -1168,11 +1474,17 @@ StateProcessorTable:
     ld a, 1
     jr .playerWalkingAnimation
 .initRightTransition
-    ;
+    ld a, GAME_STATE_RIGHT_TRANSITION
+    ld [wGameState], a
+    ld b, STATE_PLAYER_STILL
+    xor a
     ret
 
 .initLeftTransition
-    ;
+    ld a, GAME_STATE_LEFT_TRANSITION
+    ld [wGameState], a
+    ld b, STATE_PLAYER_STILL
+    xor a
     ret
 
 .playerFalling
@@ -1208,60 +1520,241 @@ StateProcessorTable:
     ret
 
 
+.rockWatching
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l ; inc hl
+    ld a, [hli]
+    ld [wCoordY], a
+    ld a, [hl]
+    ld [wCoordX], a
+    call GetTerrainAt
+    and a
+    lb bc, STATE_ROCK_DEBRIS_SHATTERING, 4
+    ret z
+    ld a, [wCoordY]
+    add a, 16
+    ld [wCoordY], a
+    call GetTerrainAt
+    and a
+    ret nz
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l
+    inc l
+    inc l
+    ld [hl], 1
+    ld a, [wCoordY]
+    sub 16
+    ld [wCoordY], a
+    call GetTerrainAt
+    add a, STATE_ROCK1_SHAKING - BLOCK_ROCK
+    ld b, a
+    ld c, 16
+    xor a
+    ret
+
 .rockShaking
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l
+    inc l
+    inc l
+    dec c
+    ld a, c
+    and 6
+    jr nz, .gotAnimationFrame
+    ld a, 4
+.gotAnimationFrame
+    rra
+    ld [hld], a
+    ld a, c
+    and a
+    ret nz
     ld a, b
     sub STATE_ROCK1_SHAKING - STATE_ROCK1_FALLING
-    ld b, a
-    dec c
+    ld d, a
+    ld a, [hld]
+    ld [wCoordX], a
+    ld a, [hl]
+    ld [wCoordY], a
+    xor a
+    call ChangeBlock
+    ld b, d
+    ld c, 8
+    xor a
     ret
 
 .rockFalling
-    ld hl, sp+2
+    ld hl, sp+4
     ld a, [hli]
     ld h, [hl]
     ld l, a
     inc l ; inc hl
     ld a, [hl]
     add a, 2
-    ld [hld], a
+    ld [hl], a
     dec c
     ret nz
     ld a, [hli]
     add a, 16
     ld [wCoordY], a
-    ld a, [hld]
+    ld a, [hli]
     ld [wCoordX], a
     ld e, l
-    ld d, h
+    ld d, b
     call GetTerrainAt
     and a
-    jr nz, .keepFalling
-    dec e ; dec de
-    dec e ; dec de
-    ld a, [de]
-    dec e ; dec de
-    ; xor a
-    ld [de], a
-    ld a, b
-    sub STATE_ROCK1_FALLING - BLOCK_ROCK
-    call ChangeBlock
-    xor a
-    ret
-.keepFalling
+    ld b, d
+    jr nz, .doneFalling
     ld c, 8
     xor a
     ret
-
-.debrisShattering
-    dec c
-    ret nz
-    ; TODO: destroy object
+.doneFalling
+    ld a, [wCoordY]
+    sub 16
+    ld [wCoordY], a
+    ld e, a
+    ld a, [wPlayer_YPos]
+    cp e
+    jr nz, .notGameOver
+    ld a, [wCoordX]
+    ld e, a
+    ld a, [wPlayer_XPos]
+    cp e
+    jp z, GameOver
+.notGameOver
+    ld a, b
+    sub STATE_ROCK1_FALLING - BLOCK_ROCK
+    call ChangeBlock
+    ld b, STATE_ROCK_WATCHING
+    ld hl, sp+5
+    ld h, [hl]
+    ld l, e
+    xor a
+    ld [hl], a
     ret
 
-SECTION "Overworld gfx", ROM0
+.rockDebrisShattering
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l
+    inc l
+    inc l
+    ld a, 1
+    ld [hli], a
+    ld a, LOW(DebrisDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(DebrisDrawLists)
+    dec c
+    ret nz
+    lb bc, STATE_DEBRIS_SHATTERING, 4
+    ret
 
-OverworldGfx:
-INCBIN "res/overworld/overworld.chr.pb16"
+.debrisShattering
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l
+    inc l
+    inc l
+    xor a
+    ld [hli], a
+    ld a, LOW(DebrisDrawLists)
+    ld [hli], a
+    ld [hl], HIGH(DebrisDrawLists)
+    dec c
+    ret nz
+    ; Destroy the object
+    ld hl, sp+4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    dec l ; dec hl
+    dec l ; dec hl
+    ld [hl], 0
+    ret
 
-OverworldSpriteGfx:
-INCBIN "res/overworld/sprites.chr.pb16"
+
+.carrot
+    call CheckPlayerOverlap
+    ret nz
+    inc a ; FIXME:
+    ret
+
+.potato
+    call DoGoodyAnimationAndCheckOverlap
+    ret nz
+    inc a ; FIXME:
+    ret
+
+.diamond
+    call DoGoodyAnimationAndCheckOverlap
+    ret nz
+    ld b, 5
+    ld d, a
+    ld e, a ; ld de, 0
+    jp AddToScore
+
+.emerald
+    call DoGoodyAnimationAndCheckOverlap
+    ret nz
+    ld b, a ; ld b, 0
+    ld de, $100
+    jp AddToScore
+
+.crystal
+    call DoGoodyAnimationAndCheckOverlap
+    ret nz
+    ld b, a ; ld b, 0
+    ld de, $2000
+    jp AddToScore
+
+
+DoGoodyAnimationAndCheckOverlap:
+    ld hl, sp+6
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l ; inc hl
+    ld a, [wAnimationFrameCounter]
+    and $0F
+    jr nz, _CheckPlayerOverlap
+    inc l ; inc hl
+    inc l ; inc hl
+    ld a, [hl]
+    xor 1
+    ld [hld], a
+    dec l ; dec hl
+    jr _CheckPlayerOverlap
+CheckPlayerOverlap:
+    ld hl, sp+6
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    inc l ; inc hl
+_CheckPlayerOverlap:
+    ld a, [wPlayer_YPos]
+    cp [hl]
+    ret nz
+    inc l ; inc hl
+    ld a, [wPlayer_XPos]
+    sub 8
+    cp [hl]
+    ret nz
+    dec l ; dec hl
+    dec l ; dec hl
+    dec l ; dec hl
+    dec l ; dec hl
+    xor a
+    ld [hl], a
+    ret
